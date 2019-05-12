@@ -18,12 +18,23 @@ import java.security.NoSuchAlgorithmException;
  */
 public class ConnectionCipher {
 
+    /**
+     * The cipher instance.
+     */
     private Cipher cipher;
 
+    /**
+     * The initialization vector used in CBC, OFB and CFB modes.
+     */
     private IvParameterSpec initializationVector;
 
     /**
-     * Initialize the connection cipher.
+     * The secret key used for encryption/decryption.
+     */
+    private SecretKey secretKey;
+
+    /**
+     * Initialize the connection cipher with AES/ECB/PKCS5Padding.
      */
     public ConnectionCipher() throws CipherException {
         this("AES", "ECB", "PKCS5Padding");
@@ -48,20 +59,39 @@ public class ConnectionCipher {
     }
 
     /**
+     * Set the initialization vector used in CBC, OFB and CFB modes.
+     *
+     * @param iv The initialization vector in bytes.
+     */
+    public void setInitializationVector(byte[] iv) {
+        this.initializationVector = new IvParameterSpec(iv);
+    }
+
+    /**
+     * Set the secret key used for encryption/decryption.
+     *
+     * @param secretKey The secret key specifications.
+     */
+    public void setSecretKey(SecretKeySpec secretKey) {
+        this.secretKey = secretKey;
+    }
+
+    /**
      * Encrypt a message.
      *
-     * @param key The secret key in bytes used for encryption.
      * @param message The message in bytes to be encrypted.
      * @return Returns the result in bytes of the encryption.
      *
      * @throws CipherException for an invalid value.
      */
-    public byte[] encrypt(byte[] key, byte[] message) throws CipherException {
+    public byte[] encrypt(byte[] message) throws CipherException {
+
+        if (this.secretKey == null) {
+            throw new CipherException("The secret key must be set before encryption");
+        }
 
         try {
-            SecretKey secret = new SecretKeySpec(key, cipher.getAlgorithm().split("/")[0]);
-
-            this.cipher.init(Cipher.ENCRYPT_MODE, secret, this.initializationVector);
+            this.cipher.init(Cipher.ENCRYPT_MODE, this.secretKey, this.initializationVector);
             return this.cipher.doFinal(message);
 
         } catch (GeneralSecurityException e) {
@@ -72,17 +102,19 @@ public class ConnectionCipher {
     /**
      * Decrypt a message.
      *
-     * @param key The secret key in bytes used for decryption.
      * @param message The message in bytes to be decrypted.
      * @return Returns the result in bytes of the decryption.
      *
      * @throws CipherException for an invalid value.
      */
-    public byte[] decrypt(byte[] key, byte[] message) throws CipherException {
-        try {
-            SecretKey secret = new SecretKeySpec(key, cipher.getAlgorithm().split("/")[0]);
+    public byte[] decrypt(byte[] message) throws CipherException {
 
-            this.cipher.init(Cipher.DECRYPT_MODE, secret, this.initializationVector);
+        if (this.secretKey == null) {
+            throw new CipherException("The secret key must be set before decryption");
+        }
+
+        try {
+            this.cipher.init(Cipher.DECRYPT_MODE, this.secretKey, this.initializationVector);
             return this.cipher.doFinal(message);
 
         } catch (GeneralSecurityException e) {

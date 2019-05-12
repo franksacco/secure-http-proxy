@@ -14,7 +14,7 @@ import java.net.Socket;
  * @author Matteo Rinaldini
  * @author Francesco Saccani
  */
-public class ClientConnection extends Thread {
+public class ServerProxyConnection extends Thread {
 
     private final Logger logger = Logger.getInstance();
 
@@ -33,11 +33,11 @@ public class ClientConnection extends Thread {
      *
      * @param clientSocket The socket used for the connection to a client.
      */
-    ClientConnection(Socket clientSocket, ConnectionCipher cipher) {
+    ServerProxyConnection(Socket clientSocket, ConnectionCipher cipher) {
         this.socket = clientSocket;
         this.cipher = cipher;
 
-        logger.log("Connection established with " + this.socket.getInetAddress());
+        this.log("Connection established");
     }
 
     /**
@@ -46,18 +46,30 @@ public class ClientConnection extends Thread {
     public void run()
     {
         try {
-            byte[] request  = this.getRequestFromProxy(this.socket.getInputStream());
+            byte[] encryptedRequest = this.getRequestFromProxy(this.socket.getInputStream());
+            byte[] request = this.cipher.decrypt(encryptedRequest);
+
+            this.log("HTTP request received and decrypted (" + request.length + " bytes)");
+            if (ServerProxy.DEBUG) {
+                System.out.println("--- SERVER REQUEST ---");
+                System.out.print(new String(request));
+                System.out.println("--- SERVER REQUEST ---");
+            }
+
             byte[] response = this.createResponse(request);
+            byte[] encryptedResponse = this.cipher.encrypt(response);
+            encryptedResponse = Utility.bytesToHexString(encryptedResponse)
+                    .concat("\r\n") // Needed to terminate message in stream
+                    .getBytes();
 
-            String message = Utility.bytesToHexString(
-                    this.cipher.encrypt(Utility.hexStringToBytes("11223344556677881122334455667788"), response)
-            );
+            this.log("HTTP response encrypted and sent (" + response.length + " bytes)");
+            if (ServerProxy.DEBUG) {
+                System.out.println("--- SERVER RESPONSE ---");
+                System.out.print(new String(response));
+                System.out.println("--- SERVER RESPONSE ---");
+            }
 
-            System.out.println("--- START ENCRYPTED RESPONSE ---");
-            System.out.println(message);
-            System.out.println("--- END ENCRYPTED RESPONSE ---");
-
-            this.socket.getOutputStream().write(message.getBytes());
+            this.socket.getOutputStream().write(encryptedResponse);
 
         } catch (IOException | CipherException e) {
             logger.error("Error in proxy-server communication", e);
@@ -65,7 +77,7 @@ public class ClientConnection extends Thread {
         } finally {
             try {
                 this.socket.close();
-                logger.log("Proxy-server connection closed");
+                this.log("Connection closed");
             } catch (IOException e) {
                 logger.error("Error closing proxy-server socket", e);
             }
@@ -87,17 +99,11 @@ public class ClientConnection extends Thread {
 
         String inputLine;
         while ((inputLine = input.readLine()) != null) {
-            requestBuilder.append(inputLine).append("\r\n");
             if (inputLine.isEmpty()) break;
+            requestBuilder.append(inputLine);
         }
 
-        String request = requestBuilder.toString();
-
-        System.out.println("--- START PROXY REQUEST ---");
-        System.out.print(request);
-        System.out.println("--- END PROXY REQUEST ---");
-
-        return request.getBytes();
+        return Utility.hexStringToBytes(requestBuilder.toString());
     }
 
     /**
@@ -134,18 +140,22 @@ public class ClientConnection extends Thread {
                     // now read the body of the response
                     char[] body = new char[contentLength];
                     input.read(body, 0, contentLength);
-                    responseBuilder.append(body);
+                    responseBuilder.append(body).append("\r\n");
                 }
                 break;
             }
         }
-        String response = responseBuilder.toString();
 
-        System.out.println("--- START SERVER RESPONSE ---");
-        System.out.println(response);
-        System.out.println("--- END SERVER RESPONSE ---");
+        return responseBuilder.toString().getBytes();
+    }
 
-        return response.getBytes();
+    /**
+     * Log some message.
+     *
+     * @param message The message to log.
+     */
+    private void log(String message) {
+        logger.log("[ServerProxy@" + this.socket.getInetAddress().getHostAddress() + "] " + message);
     }
 
 }

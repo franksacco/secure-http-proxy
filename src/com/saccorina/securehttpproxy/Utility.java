@@ -1,9 +1,5 @@
 package com.saccorina.securehttpproxy;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.InputStream;
-
 /**
  * Project utilities.
  *
@@ -39,29 +35,4 @@ public class Utility {
         return buffer;
     }
 
-    /**
-     * Converts an input stream to a byte array.
-     *
-     * @param in The input stream.
-     * @return Returns the byte array.
-     *
-     * @throws IOException if the first byte cannot be read for any reason
-     *     other than the end of the file, if the input stream has been
-     *     closed, or if some other I/O error occurs.
-     */
-    public static byte[] inputStreamToByteArray(InputStream in) throws IOException {
-
-        ByteArrayOutputStream os = new ByteArrayOutputStream();
-
-        byte[] buffer = new byte[1024];
-        int len;
-
-        // read bytes from the input stream and store them in buffer
-        while ((len = in.read(buffer)) != -1) {
-            // write bytes from the buffer into output stream
-            os.write(buffer, 0, len);
-        }
-
-        return os.toByteArray();
-    }
 }

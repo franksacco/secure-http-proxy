@@ -25,7 +25,7 @@ public class Logger {
      * @param log The message to log.
      */
     public void log(String log) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.n");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.SSS");
         LocalDateTime now = LocalDateTime.now();
 
         System.out.println("[" + formatter.format(now) + "] " + log);

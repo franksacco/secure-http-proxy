@@ -11,6 +11,13 @@ public class CipherException extends Exception {
     /**
      * {@inheritDoc}
      */
+    public CipherException(String message) {
+        super(message);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
     public CipherException(String message, Throwable e) {
         super(message, e);
     }
