@@ -20,6 +20,9 @@ class ServerProxy {
 
     static final boolean DEBUG = false;
 
+    /**
+     * The application logger.
+     */
     private static final Logger logger = Logger.getInstance();
 
     /**
@@ -40,7 +43,7 @@ class ServerProxy {
      * @throws CipherException if an error occurs during key generation.
      * @throws SocketException if an I/O error occurs during the exchange.
      */
-    public ServerProxy(int port) throws CipherException, SocketException {
+    private ServerProxy(int port) throws CipherException, SocketException {
         this.port = port;
 
         DHKeyExchange dhKeyExchange = new DHKeyExchange();
@@ -53,7 +56,7 @@ class ServerProxy {
      *
      * @throws SocketException if a socket error occurs.
      */
-    public void startServer() throws SocketException, CipherException {
+    private void startServer() throws SocketException, CipherException {
         try {
             ServerSocket server = new ServerSocket(port);
             server.setReuseAddress(true);
@@ -69,7 +72,6 @@ class ServerProxy {
                 ServerProxyConnection connection = new ServerProxyConnection(clientSocket, cipher);
                 connection.start();
             }
-
         } catch (IOException e) {
             throw new SocketException(e.getMessage(), e);
         }

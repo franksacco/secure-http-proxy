@@ -38,7 +38,7 @@ public class Logger {
      * @param throwable The exception thrown.
      */
     public void error(String log, Throwable throwable) {
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.n");
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy/MM/dd HH:mm:ss.SSS");
         LocalDateTime now = LocalDateTime.now();
 
         System.err.println("[" + formatter.format(now) + "] [ERROR] " + log + ": " + throwable.getMessage());

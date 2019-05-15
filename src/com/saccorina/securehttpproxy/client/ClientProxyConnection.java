@@ -1,13 +1,13 @@
 package com.saccorina.securehttpproxy.client;
 
 import com.saccorina.securehttpproxy.ConnectionCipher;
+import com.saccorina.securehttpproxy.HttpMessageReader;
 import com.saccorina.securehttpproxy.Logger;
 import com.saccorina.securehttpproxy.Utility;
 import com.saccorina.securehttpproxy.exception.CipherException;
 
 import java.io.*;
 import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 
 /**
  * Handler class for the connection between real-client and proxy-client.
@@ -17,6 +17,9 @@ import java.nio.charset.StandardCharsets;
  */
 public class ClientProxyConnection extends Thread {
 
+    /**
+     * The application logger.
+     */
     private final Logger logger = Logger.getInstance();
 
     /**
@@ -37,11 +40,6 @@ public class ClientProxyConnection extends Thread {
      * The server port.
      */
     private final int serverPort;
-
-    /**
-     * The target host of the client HTTP request.
-     */
-    private String requestedHost = "localhost";
 
     /**
      * Initialize a proxy connection.
@@ -69,18 +67,21 @@ public class ClientProxyConnection extends Thread {
      */
     public void run() {
         try {
-            byte[] request  = this.getRequestFromClient(this.socket.getInputStream());
+            // retrieve the request from the client
+            HttpMessageReader requestReader = new HttpMessageReader(this.socket.getInputStream());
+            String requestedHost = requestReader.getHost();
+            byte[] request = requestReader.getMessage();
             if (ClientProxy.DEBUG) {
                 System.out.println("--- CLIENT REQUEST ---");
-                System.out.print(new String(request));
+                System.out.println(new String(request));
                 System.out.println("--- CLIENT REQUEST ---");
             }
 
             byte[] response;
-            if (this.requestedHost.equals("localhost")) {
+            if (requestedHost != null && requestedHost.equals(this.serverHost)) {
                 byte[] encryptedRequest = this.cipher.encrypt(request);
                 encryptedRequest = Utility.bytesToHexString(encryptedRequest)
-                        .concat("\r\n") // needed to terminate message in stream
+                        .concat("\n\n") // needed to terminate message in output stream
                         .getBytes();
 
                 this.log("HTTP request encrypted and sent (" + request.length + " bytes)");
@@ -90,14 +91,14 @@ public class ClientProxyConnection extends Thread {
                 this.log("HTTP response received and decrypted (" + response.length + " bytes)");
 
             } else {
-                this.log("HTTP request sent to external host \"" + this.requestedHost + "\"");
-                response = this.sendRequestToExternalServer(request);
-                this.log("HTTP response received from external host \"" + this.requestedHost + "\"");
+                this.log("HTTP request sent to external host \"" + requestedHost + "\"");
+                response = this.sendRequestToExternalServer(requestedHost, request);
+                this.log("HTTP response received from external host \"" + requestedHost + "\"");
             }
 
             if (ClientProxy.DEBUG) {
                 System.out.println("--- SERVER RESPONSE ---");
-                System.out.print(new String(response));
+                System.out.println(new String(response));
                 System.out.println("--- SERVER RESPONSE ---");
             }
 
@@ -118,56 +119,6 @@ public class ClientProxyConnection extends Thread {
     }
 
     /**
-     * Retrieve the client HTTP request from the input stream.
-     *
-     * @param inputStream The input stream of the server socket.
-     * @return Returns the client HTTP request in bytes.
-     *
-     * @throws IOException if an I/O error occurs.
-     */
-    private byte[] getRequestFromClient(InputStream inputStream) throws IOException {
-
-        BufferedReader input = new BufferedReader(new InputStreamReader(inputStream));
-        StringBuilder requestBuilder = new StringBuilder();
-
-        String inputLine;
-        int contentLength = 0;
-        while ((inputLine = input.readLine()) != null)
-        {
-            if (inputLine.length() >= 7 && inputLine.substring(0, 4).equals("Host")) {
-                // this line is the "Host" header
-                this.requestedHost = inputLine.substring(6);
-                if (this.requestedHost.contains(":")) {
-                    // remove port if set
-                    this.requestedHost = this.requestedHost.split(":")[0];
-                }
-
-            } else if (inputLine.length() >= 18 && inputLine.substring(0, 15).equals("Accept-Encoding")) {
-                // todo not remove the encoding header
-                continue;
-
-            } else if (inputLine.length() >= 17 && inputLine.substring(0, 14).equals("Content-Length")) {
-                // this line is the "Content-Length" header
-                contentLength = Integer.parseInt(inputLine.substring(16));
-            }
-            requestBuilder.append(inputLine).append("\r\n");
-
-            if (inputLine.isEmpty()) {
-                // actual line is the empty line that divides headers and body
-                if (contentLength > 0) {
-                    // now read the body of the response
-                    char[] body = new char[contentLength];
-                    input.read(body, 0, contentLength);
-                    requestBuilder.append(body);
-                }
-                break;
-            }
-        }
-
-        return requestBuilder.toString().getBytes();
-    }
-
-    /**
      * Sends request to the server and returns the response.
      *
      * @param request The client HTTP request in bytes.
@@ -176,66 +127,47 @@ public class ClientProxyConnection extends Thread {
      * @throws IOException if an I/O error occurs.
      */
     private byte[] sendRequestToServer(byte[] request) throws IOException {
+        // connect to the proxy server
+        Socket socket = new Socket(this.serverHost, this.serverPort);
 
-        Socket serverSocket = new Socket(this.serverHost, this.serverPort);
+        // send the client request
+        OutputStream outputStream = socket.getOutputStream();
+        outputStream.write(request);
+        outputStream.flush();
 
-        PrintWriter output = new PrintWriter(serverSocket.getOutputStream(), true);
-        output.println(new String(request));
-
-        BufferedReader input = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
+        // receive the server response
+        BufferedReader input = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         StringBuilder responseBuilder = new StringBuilder();
-
-        String inputLine;
-        while ((inputLine = input.readLine()) != null) {
-            if (inputLine.isEmpty()) break;
-            responseBuilder.append(inputLine);
+        String line;
+        while ((line = input.readLine()) != null) {
+            if (line.isEmpty()) break;
+            responseBuilder.append(line);
         }
-
         return Utility.hexStringToBytes(responseBuilder.toString());
     }
 
     /**
      * Sends request to an external server and returns the response.
      *
+     * @param host The external host where to send the request.
      * @param request The client HTTP request in bytes.
      * @return Returns the server response in bytes.
      *
      * @throws IOException if an I/O error occurs.
      */
-    private byte[] sendRequestToExternalServer(byte[] request) throws IOException {
+    private byte[] sendRequestToExternalServer(String host, byte[] request) throws IOException {
+        // connect to the external server
+        Socket socket = new Socket(host, 80);
 
-        Socket serverSocket = new Socket(this.requestedHost, 80);
+        // send the client request
+        OutputStream outputStream = socket.getOutputStream();
+        outputStream.write(request);
+        outputStream.flush();
 
-        PrintWriter output = new PrintWriter(serverSocket.getOutputStream(), true);
-        output.println(new String(request));
-
-        BufferedReader input = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
-        StringBuilder responseBuilder = new StringBuilder();
-
-        String inputLine;
-        int contentLength = 0;
-        while ((inputLine = input.readLine()) != null)
-        {
-            if (inputLine.length() >= 17 &&
-                    inputLine.substring(0, 14).equals("Content-Length")) {
-                // this line is the "Content-Length" header
-                contentLength = Integer.parseInt(inputLine.substring(16));
-            }
-            responseBuilder.append(inputLine).append("\r\n");
-
-            if (inputLine.isEmpty()) {
-                // actual line is an empty line that divides headers and body
-                if (contentLength > 0) {
-                    // now read the body of the response
-                    char[] body = new char[contentLength];
-                    input.read(body, 0, contentLength);
-                    responseBuilder.append(body).append("\r\n");
-                }
-                break;
-            }
-        }
-
-        return responseBuilder.toString().getBytes(StandardCharsets.UTF_8);
+        // receive the server response
+        InputStream inputStream = socket.getInputStream();
+        HttpMessageReader responseReader = new HttpMessageReader(inputStream);
+        return responseReader.getMessage();
     }
 
     /**

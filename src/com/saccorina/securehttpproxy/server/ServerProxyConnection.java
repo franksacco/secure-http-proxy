@@ -1,6 +1,7 @@
 package com.saccorina.securehttpproxy.server;
 
 import com.saccorina.securehttpproxy.ConnectionCipher;
+import com.saccorina.securehttpproxy.HttpMessageReader;
 import com.saccorina.securehttpproxy.Logger;
 import com.saccorina.securehttpproxy.Utility;
 import com.saccorina.securehttpproxy.exception.CipherException;
@@ -16,6 +17,9 @@ import java.net.Socket;
  */
 public class ServerProxyConnection extends Thread {
 
+    /**
+     * The application logger.
+     */
     private final Logger logger = Logger.getInstance();
 
     /**
@@ -31,10 +35,11 @@ public class ServerProxyConnection extends Thread {
     /**
      * Initialize a connection to a client.
      *
-     * @param clientSocket The socket used for the connection to a client.
+     * @param socket The socket used for the connection to a client.
+     * @param cipher The cipher configured to encrypt or decrypt HTTP messages.
      */
-    ServerProxyConnection(Socket clientSocket, ConnectionCipher cipher) {
-        this.socket = clientSocket;
+    ServerProxyConnection(Socket socket, ConnectionCipher cipher) {
+        this.socket = socket;
         this.cipher = cipher;
 
         this.log("Connection established");
@@ -43,31 +48,30 @@ public class ServerProxyConnection extends Thread {
     /**
      * {@inheritDoc}
      */
-    public void run()
-    {
+    public void run() {
         try {
             byte[] encryptedRequest = this.getRequestFromProxy(this.socket.getInputStream());
             byte[] request = this.cipher.decrypt(encryptedRequest);
 
-            this.log("HTTP request received and decrypted (" + request.length + " bytes)");
             if (ServerProxy.DEBUG) {
                 System.out.println("--- SERVER REQUEST ---");
-                System.out.print(new String(request));
+                System.out.println(new String(request));
                 System.out.println("--- SERVER REQUEST ---");
             }
+            this.log("HTTP request received and decrypted (" + request.length + " bytes)");
 
-            byte[] response = this.createResponse(request);
+            byte[] response = this.retrieveResponse(request);
             byte[] encryptedResponse = this.cipher.encrypt(response);
             encryptedResponse = Utility.bytesToHexString(encryptedResponse)
-                    .concat("\r\n") // Needed to terminate message in stream
+                    .concat("\n\n") // Needed to terminate message in stream
                     .getBytes();
 
-            this.log("HTTP response encrypted and sent (" + response.length + " bytes)");
             if (ServerProxy.DEBUG) {
                 System.out.println("--- SERVER RESPONSE ---");
-                System.out.print(new String(response));
+                System.out.println(new String(response));
                 System.out.println("--- SERVER RESPONSE ---");
             }
+            this.log("HTTP response encrypted and sent (" + response.length + " bytes)");
 
             this.socket.getOutputStream().write(encryptedResponse);
 
@@ -87,66 +91,43 @@ public class ServerProxyConnection extends Thread {
     /**
      * Retrieve the proxy request from the input stream.
      *
-     * @param inputStream The input stream of the server socket.
+     * @param in The input stream of the server socket.
      * @return Returns the proxy request in bytes.
      *
      * @throws IOException if an I/O error occurs.
      */
-    private byte[] getRequestFromProxy(InputStream inputStream) throws IOException {
-
-        BufferedReader input = new BufferedReader(new InputStreamReader(inputStream));
+    private byte[] getRequestFromProxy(InputStream in) throws IOException {
+        BufferedReader input = new BufferedReader(new InputStreamReader(in));
         StringBuilder requestBuilder = new StringBuilder();
-
-        String inputLine;
-        while ((inputLine = input.readLine()) != null) {
-            if (inputLine.isEmpty()) break;
-            requestBuilder.append(inputLine);
+        String line;
+        while ((line = input.readLine()) != null) {
+            if (line.isEmpty()) break;
+            requestBuilder.append(line);
         }
-
         return Utility.hexStringToBytes(requestBuilder.toString());
     }
 
     /**
-     * Creates the server response.
+     * Retrieves the HTTP response from the final server.
      *
-     * @return Returns the array of bytes representing the server response.
+     * @param request The HTTP request from the initial client.
+     * @return Returns the server response as byte array.
      *
      * @throws IOException if an I/O error occurs.
      */
-    private byte[] createResponse(byte[] request) throws IOException {
+    private byte[] retrieveResponse(byte[] request) throws IOException {
+        // connect to the final server
+        Socket socket = new Socket("localhost", 80);
 
-        Socket serverSocket = new Socket("localhost", 80);
+        // send the client request
+        OutputStream outputStream = socket.getOutputStream();
+        outputStream.write(request);
+        outputStream.flush();
 
-        PrintWriter output = new PrintWriter(serverSocket.getOutputStream(), true);
-        output.println(new String(request));
-
-        BufferedReader input = new BufferedReader(new InputStreamReader(serverSocket.getInputStream()));
-        StringBuilder responseBuilder = new StringBuilder();
-
-        String inputLine;
-        int contentLength = 0;
-        while ((inputLine = input.readLine()) != null)
-        {
-            if (inputLine.length() >= 17 &&
-                    inputLine.substring(0, 14).equals("Content-Length")) {
-                // this line is the "Content-Length" header
-                contentLength = Integer.parseInt(inputLine.substring(16));
-            }
-            responseBuilder.append(inputLine).append("\r\n");
-
-            if (inputLine.isEmpty()) {
-                // actual line is an empty line that divides headers and body
-                if (contentLength > 0) {
-                    // now read the body of the response
-                    char[] body = new char[contentLength];
-                    input.read(body, 0, contentLength);
-                    responseBuilder.append(body).append("\r\n");
-                }
-                break;
-            }
-        }
-
-        return responseBuilder.toString().getBytes();
+        // receive the server response
+        InputStream inputStream = socket.getInputStream();
+        HttpMessageReader responseReader = new HttpMessageReader(inputStream);
+        return responseReader.getMessage();
     }
 
     /**

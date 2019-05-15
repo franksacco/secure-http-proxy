@@ -35,6 +35,8 @@ public class ConnectionCipher {
 
     /**
      * Initialize the connection cipher with AES/ECB/PKCS5Padding.
+     *
+     * @throws CipherException for an empty algorithm or padding mode.
      */
     public ConnectionCipher() throws CipherException {
         this("AES", "ECB", "PKCS5Padding");

@@ -18,8 +18,11 @@ import java.net.Socket;
  */
 class ClientProxy {
 
-    static final boolean DEBUG = true;
+    static final boolean DEBUG = false;
 
+    /**
+     * The application logger.
+     */
     private final Logger logger = Logger.getInstance();
 
     /**
@@ -45,7 +48,7 @@ class ClientProxy {
      * @throws CipherException if an error occurs during key generation.
      * @throws SocketException if an I/O error occurs during the exchange.
      */
-    public ClientProxy(String serverHost, int serverPort) throws CipherException, SocketException {
+    private ClientProxy(String serverHost, int serverPort) throws CipherException, SocketException {
         this.serverHost = serverHost;
         this.serverPort = serverPort;
 
@@ -60,8 +63,9 @@ class ClientProxy {
      * @param port The port number for the proxy server.
      *
      * @throws SocketException if a socket error occurs.
+     * @throws CipherException if an error occurs cipher configuration.
      */
-    public void startServer(int port) throws SocketException, CipherException {
+    private void startServer(int port) throws SocketException, CipherException {
         try {
             ServerSocket proxyServer = new ServerSocket(port);
             proxyServer.setReuseAddress(true);
@@ -82,7 +86,6 @@ class ClientProxy {
                 );
                 connection.start();
             }
-
         } catch (IOException e) {
             throw new SocketException(e.getMessage(), e);
         }
@@ -94,7 +97,6 @@ class ClientProxy {
      * @param args Console arguments.
      */
     public static void main(String[] args) {
-
         try {
             ClientProxy client = new ClientProxy("localhost", 4321);
             client.startServer(1234);
