@@ -25,5 +25,6 @@ In a simplified deployment, in case of only one remote server is considered, the
 configuring P2' to communicate directly with the given remote server.
 
 ## Authors
- - [Matteo Rinaldini](https://github.com/matterina) <matteo.rinaldini@studenti.unipr.it>
- - [Francesco Saccani](https://github.com/franksacco/) <francesco.saccani2@studenti.unipr.it>
+ - [Matteo Rinaldini](https://github.com/matterina)
+ - [Francesco Saccani](https://github.com/franksacco/)
+

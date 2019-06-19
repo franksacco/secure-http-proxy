@@ -142,7 +142,7 @@ public class HttpMessageReader {
         if (hostHeader == null) {
             return null;
         }
-        return hostHeader.get(0);
+        return hostHeader.get(0).split(":")[0]; // remove port if present
     }
 
     /**
